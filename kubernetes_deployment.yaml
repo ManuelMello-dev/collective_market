@@ -1,0 +1,499 @@
+# Kubernetes Deployment Manifests for Market Intelligence System
+# Deploy with: kubectl apply -f kubernetes/
+
+---
+# ConfigMap for environment variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: market-system-config
+  namespace: market-system
+data:
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  MYSQL_HOST: "mysql-service"
+  MYSQL_DB: "market_memory"
+  INFLUXDB_URL: "http://influxdb-service:8086"
+  INFLUXDB_ORG: "market-system"
+  INFLUXDB_BUCKET: "market-data"
+  ZMQ_PORT: "5555"
+  METRICS_PORT: "9090"
+
+---
+# Secret for sensitive credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: market-system-secrets
+  namespace: market-system
+type: Opaque
+stringData:
+  MYSQL_USER: "market"
+  MYSQL_PASSWORD: "market_password_changeme"
+  POLYGON_API_KEY: "your_polygon_key"
+  ALPACA_KEY: "your_alpaca_key"
+  ALPACA_SECRET: "your_alpaca_secret"
+  INFLUXDB_TOKEN: "your_influxdb_token"
+
+---
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: market-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: redis-pvc
+
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: market-system
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+  type: ClusterIP
+
+---
+# MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: market-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: market-system-secrets
+              key: MYSQL_PASSWORD
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: market-system-config
+              key: MYSQL_DB
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: market-system-secrets
+              key: MYSQL_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: market-system-secrets
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 3306
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-data
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+# MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: market-system
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+  type: ClusterIP
+
+---
+# InfluxDB Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: influxdb
+  namespace: market-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: influxdb
+  template:
+    metadata:
+      labels:
+        app: influxdb
+    spec:
+      containers:
+      - name: influxdb
+        image: influxdb:2.7
+        env:
+        - name: DOCKER_INFLUXDB_INIT_MODE
+          value: "setup"
+        - name: DOCKER_INFLUXDB_INIT_USERNAME
+          value: "admin"
+        - name: DOCKER_INFLUXDB_INIT_PASSWORD
+          value: "adminpassword"
+        - name: DOCKER_INFLUXDB_INIT_ORG
+          valueFrom:
+            configMapKeyRef:
+              name: market-system-config
+              key: INFLUXDB_ORG
+        - name: DOCKER_INFLUXDB_INIT_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: market-system-config
+              key: INFLUXDB_BUCKET
+        - name: DOCKER_INFLUXDB_INIT_ADMIN_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: market-system-secrets
+              key: INFLUXDB_TOKEN
+        ports:
+        - containerPort: 8086
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: influxdb-data
+          mountPath: /var/lib/influxdb2
+      volumes:
+      - name: influxdb-data
+        persistentVolumeClaim:
+          claimName: influxdb-pvc
+
+---
+# InfluxDB Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: influxdb-service
+  namespace: market-system
+spec:
+  selector:
+    app: influxdb
+  ports:
+  - port: 8086
+    targetPort: 8086
+  type: ClusterIP
+
+---
+# Market Data Publisher Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: market-publisher
+  namespace: market-system
+spec:
+  replicas: 2  # Scale for high availability
+  selector:
+    matchLabels:
+      app: market-publisher
+  template:
+    metadata:
+      labels:
+        app: market-publisher
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      containers:
+      - name: publisher
+        image: market-system/publisher:latest
+        imagePullPolicy: Always
+        env:
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: market-system-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: market-system-config
+              key: REDIS_PORT
+        - name: MYSQL_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: market-system-config
+              key: MYSQL_HOST
+        - name: MYSQL_DB
+          valueFrom:
+            configMapKeyRef:
+              name: market-system-config
+              key: MYSQL_DB
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: market-system-secrets
+              key: MYSQL_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: market-system-secrets
+              key: MYSQL_PASSWORD
+        - name: POLYGON_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: market-system-secrets
+              key: POLYGON_API_KEY
+        - name: ALPACA_KEY
+          valueFrom:
+            secretKeyRef:
+              name: market-system-secrets
+              key: ALPACA_KEY
+        - name: ALPACA_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: market-system-secrets
+              key: ALPACA_SECRET
+        - name: INFLUXDB_URL
+          valueFrom:
+            configMapKeyRef:
+              name: market-system-config
+              key: INFLUXDB_URL
+        - name: INFLUXDB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: market-system-secrets
+              key: INFLUXDB_TOKEN
+        ports:
+        - containerPort: 5555
+          name: zmq
+        - containerPort: 9090
+          name: metrics
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: 9090
+          initialDelaySeconds: 15
+          periodSeconds: 5
+
+---
+# Market Publisher Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: market-publisher-service
+  namespace: market-system
+spec:
+  selector:
+    app: market-publisher
+  ports:
+  - name: zmq
+    port: 5555
+    targetPort: 5555
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+  type: ClusterIP
+
+---
+# Simulation Engine Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simulation-engine
+  namespace: market-system
+spec:
+  replicas: 1  # CPU-intensive, may need GPU nodes
+  selector:
+    matchLabels:
+      app: simulation-engine
+  template:
+    metadata:
+      labels:
+        app: simulation-engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9091"
+    spec:
+      containers:
+      - name: simulator
+        image: market-system/simulator:latest
+        imagePullPolicy: Always
+        env:
+        - name: ZMQ_PUBLISHER_HOST
+          value: "market-publisher-service"
+        - name: ZMQ_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: market-system-config
+              key: ZMQ_PORT
+        - name: INFLUXDB_URL
+          valueFrom:
+            configMapKeyRef:
+              name: market-system-config
+              key: INFLUXDB_URL
+        - name: INFLUXDB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: market-system-secrets
+              key: INFLUXDB_TOKEN
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"  # GPU support if available
+        ports:
+        - containerPort: 9091
+          name: metrics
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "2000m"
+          limits:
+            memory: "4Gi"
+            cpu: "4000m"
+            nvidia.com/gpu: 1  # Request GPU if available
+        volumeMounts:
+        - name: simulation-data
+          mountPath: /data
+      volumes:
+      - name: simulation-data
+        emptyDir: {}
+      # Uncomment for GPU support
+      # nodeSelector:
+      #   gpu: "true"
+
+---
+# HorizontalPodAutoscaler for Publisher
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: market-publisher-hpa
+  namespace: market-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: market-publisher
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# PersistentVolumeClaims
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: market-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: market-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: influxdb-pvc
+  namespace: market-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: market-system

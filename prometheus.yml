@@ -1,0 +1,98 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'market-intelligence-system'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # - 'alertmanager:9093'
+
+# Load rules once and periodically evaluate them
+rule_files:
+  # - "alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Market system metrics
+  - job_name: 'market-publisher'
+    static_configs:
+      - targets: ['localhost:9091']
+        labels:
+          service: 'market-publisher'
+          component: 'data-pipeline'
+    # For Docker Compose, use service name
+    # - targets: ['market-publisher:9090']
+  
+  - job_name: 'market-simulator'
+    static_configs:
+      - targets: ['localhost:9092']
+        labels:
+          service: 'market-simulator'
+          component: 'simulation'
+    # For Docker Compose
+    # - targets: ['market-simulator:9090']
+  
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+  
+  # InfluxDB metrics
+  - job_name: 'influxdb'
+    static_configs:
+      - targets: ['influxdb:8086']
+    metrics_path: '/metrics'
+  
+  # Redis exporter (if using redis_exporter)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+  
+  # MySQL exporter (if using mysqld_exporter)
+  # - job_name: 'mysql'
+  #   static_configs:
+  #     - targets: ['mysql-exporter:9104']
+  
+  # Kubernetes service discovery (for K8s deployment)
+  # - job_name: 'kubernetes-pods'
+  #   kubernetes_sd_configs:
+  #     - role: pod
+  #       namespaces:
+  #         names:
+  #           - market-system
+  #   relabel_configs:
+  #     - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+  #       action: keep
+  #       regex: true
+  #     - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+  #       action: replace
+  #       target_label: __metrics_path__
+  #       regex: (.+)
+  #     - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+  #       action: replace
+  #       regex: ([^:]+)(?::\d+)?;(\d+)
+  #       replacement: $1:$2
+  #       target_label: __address__
+  #     - source_labels: [__meta_kubernetes_namespace]
+  #       action: replace
+  #       target_label: kubernetes_namespace
+  #     - source_labels: [__meta_kubernetes_pod_name]
+  #       action: replace
+  #       target_label: kubernetes_pod_name
+
+# Remote write (optional - for long-term storage in other systems)
+# remote_write:
+#   - url: "http://remote-storage:9009/api/v1/push"
+#     queue_config:
+#       capacity: 10000
+#       max_shards: 50
+#       min_shards: 1
+#       max_samples_per_send: 5000
+#       batch_send_deadline: 5s
+#       min_backoff: 30ms
+#       max_backoff: 100ms

@@ -169,6 +169,8 @@ def main():
     logger.info(f"Metrics endpoint available at: http://0.0.0.0:{port}/metrics")
     
     # Run uvicorn server
+    # Note: Binding to 0.0.0.0 is required for containerized deployments (Railway, Docker, K8s)
+    # Railway handles network security, firewall, and TLS termination at the platform level
     uvicorn.run(
         app,
         host="0.0.0.0",

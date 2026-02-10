@@ -1,0 +1,414 @@
+{
+  "dashboard": {
+    "title": "Market Intelligence System Dashboard",
+    "tags": ["market", "trading", "simulation"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "5s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Portfolio Value Over Time",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"market-data\") |> range(start: -1h) |> filter(fn: (r) => r[\"_measurement\"] == \"portfolio\") |> filter(fn: (r) => r[\"_field\"] == \"total_value\")",
+            "datasource": "InfluxDB"
+          }
+        ],
+        "yaxes": [
+          {"format": "currencyUSD", "label": "Portfolio Value"},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "pointradius": 2
+      },
+      {
+        "id": 2,
+        "title": "Realized vs Unrealized P&L",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"market-data\") |> range(start: -1h) |> filter(fn: (r) => r[\"_measurement\"] == \"portfolio\") |> filter(fn: (r) => r[\"_field\"] == \"closed_pnl\")",
+            "datasource": "InfluxDB",
+            "alias": "Realized P&L"
+          },
+          {
+            "refId": "B",
+            "query": "from(bucket: \"market-data\") |> range(start: -1h) |> filter(fn: (r) => r[\"_measurement\"] == \"portfolio\") |> filter(fn: (r) => r[\"_field\"] == \"unrealized_pnl\")",
+            "datasource": "InfluxDB",
+            "alias": "Unrealized P&L"
+          }
+        ],
+        "yaxes": [
+          {"format": "currencyUSD", "label": "P&L"},
+          {"format": "short"}
+        ],
+        "seriesOverrides": [
+          {"alias": "Realized P&L", "color": "#73BF69"},
+          {"alias": "Unrealized P&L", "color": "#F2CC0C"}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Current Portfolio Metrics",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 8, "w": 6, "h": 4},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"market-data\") |> range(start: -5m) |> filter(fn: (r) => r[\"_measurement\"] == \"portfolio\") |> filter(fn: (r) => r[\"_field\"] == \"total_value\") |> last()",
+            "datasource": "InfluxDB"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          },
+          "textMode": "auto",
+          "graphMode": "area",
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Total P&L",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 8, "w": 6, "h": 4},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"market-data\") |> range(start: -5m) |> filter(fn: (r) => r[\"_measurement\"] == \"portfolio\") |> filter(fn: (r) => r[\"_field\"] == \"total_pnl\") |> last()",
+            "datasource": "InfluxDB"
+          }
+        ],
+        "options": {
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "red"},
+                {"value": 0, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Open Positions",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 8, "w": 6, "h": 4},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"market-data\") |> range(start: -5m) |> filter(fn: (r) => r[\"_measurement\"] == \"portfolio\") |> filter(fn: (r) => r[\"_field\"] == \"positions_count\") |> last()",
+            "datasource": "InfluxDB"
+          }
+        ],
+        "options": {
+          "colorMode": "background"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Win Rate",
+        "type": "gauge",
+        "gridPos": {"x": 18, "y": 8, "w": 6, "h": 4},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"market-data\") |> range(start: -5m) |> filter(fn: (r) => r[\"_measurement\"] == \"performance\") |> filter(fn: (r) => r[\"_field\"] == \"win_rate\") |> last()",
+            "datasource": "InfluxDB"
+          }
+        ],
+        "options": {
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 0.5, "color": "yellow"},
+                {"value": 0.6, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Market Sentiment - Equity",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 12, "w": 12, "h": 6},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"market-data\") |> range(start: -1h) |> filter(fn: (r) => r[\"_measurement\"] == \"sentiment\") |> filter(fn: (r) => r[\"_field\"] == \"equity_fg\")",
+            "datasource": "InfluxDB"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Fear & Greed Index", "min": 0, "max": 100},
+          {"format": "short"}
+        ],
+        "thresholds": [
+          {"value": 25, "colorMode": "custom", "fill": true, "line": false, "op": "lt", "fillColor": "rgba(234, 112, 112, 0.2)"},
+          {"value": 75, "colorMode": "custom", "fill": true, "line": false, "op": "gt", "fillColor": "rgba(50, 172, 45, 0.2)"}
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Market Sentiment - Crypto",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 12, "w": 12, "h": 6},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"market-data\") |> range(start: -1h) |> filter(fn: (r) => r[\"_measurement\"] == \"sentiment\") |> filter(fn: (r) => r[\"_field\"] == \"crypto_fg\")",
+            "datasource": "InfluxDB"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Fear & Greed Index", "min": 0, "max": 100},
+          {"format": "short"}
+        ],
+        "thresholds": [
+          {"value": 25, "colorMode": "custom", "fill": true, "line": false, "op": "lt", "fillColor": "rgba(234, 112, 112, 0.2)"},
+          {"value": 75, "colorMode": "custom", "fill": true, "line": false, "op": "gt", "fillColor": "rgba(50, 172, 45, 0.2)"}
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Top Positions by Unrealized P&L",
+        "type": "table",
+        "gridPos": {"x": 0, "y": 18, "w": 12, "h": 6},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"market-data\") |> range(start: -5m) |> filter(fn: (r) => r[\"_measurement\"] == \"position\") |> pivot(rowKey:[\"symbol\"], columnKey: [\"_field\"], valueColumn: \"_value\") |> sort(columns: [\"unrealized_pnl\"], desc: true) |> limit(n: 10)",
+            "datasource": "InfluxDB"
+          }
+        ],
+        "options": {
+          "showHeader": true
+        },
+        "fieldConfig": {
+          "overrides": [
+            {"matcher": {"id": "byName", "options": "unrealized_pnl"}, "properties": [{"id": "unit", "value": "currencyUSD"}]},
+            {"matcher": {"id": "byName", "options": "current_price"}, "properties": [{"id": "unit", "value": "currencyUSD"}]},
+            {"matcher": {"id": "byName", "options": "pnl_pct"}, "properties": [{"id": "unit", "value": "percent"}]}
+          ]
+        }
+      },
+      {
+        "id": 10,
+        "title": "Recent Trades",
+        "type": "table",
+        "gridPos": {"x": 12, "y": 18, "w": 12, "h": 6},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"market-data\") |> range(start: -1h) |> filter(fn: (r) => r[\"_measurement\"] == \"trade\") |> pivot(rowKey:[\"_time\", \"symbol\"], columnKey: [\"_field\"], valueColumn: \"_value\") |> sort(columns: [\"_time\"], desc: true) |> limit(n: 20)",
+            "datasource": "InfluxDB"
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Simulation Global State (Z³)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 24, "w": 24, "h": 6},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"market-data\") |> range(start: -1h) |> filter(fn: (r) => r[\"_measurement\"] == \"simulation\") |> filter(fn: (r) => r[\"_field\"] == \"global_state\")",
+            "datasource": "InfluxDB"
+          }
+        ],
+        "yaxes": [
+          {"format": "currencyUSD", "label": "Global State"},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 2,
+        "linewidth": 2
+      },
+      {
+        "id": 12,
+        "title": "System Health",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 30, "w": 24, "h": 3},
+        "targets": [
+          {
+            "refId": "Redis",
+            "expr": "market_system_service_up{service=\"redis\"}",
+            "datasource": "Prometheus"
+          },
+          {
+            "refId": "MySQL",
+            "expr": "market_system_service_up{service=\"mysql\"}",
+            "datasource": "Prometheus"
+          },
+          {
+            "refId": "Sentiment",
+            "expr": "market_system_service_up{service=\"sentiment\"}",
+            "datasource": "Prometheus"
+          },
+          {
+            "refId": "Polygon",
+            "expr": "market_system_service_up{service=\"polygon\"}",
+            "datasource": "Prometheus"
+          }
+        ],
+        "options": {
+          "orientation": "horizontal",
+          "textMode": "value_and_name",
+          "colorMode": "background"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}}},
+              {"type": "value", "options": {"1": {"text": "UP", "color": "green"}}}
+            ]
+          }
+        }
+      },
+      {
+        "id": 13,
+        "title": "Data Fetch Success Rate",
+        "type": "gauge",
+        "gridPos": {"x": 0, "y": 33, "w": 8, "h": 6},
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "rate(market_system_data_fetch_total{status=\"success\"}[5m]) / rate(market_system_data_fetch_total[5m])",
+            "datasource": "Prometheus"
+          }
+        ],
+        "options": {
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 0.9, "color": "yellow"},
+                {"value": 0.95, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 14,
+        "title": "Redis Operations Rate",
+        "type": "graph",
+        "gridPos": {"x": 8, "y": 33, "w": 8, "h": 6},
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "rate(market_system_redis_operations_total[1m])",
+            "datasource": "Prometheus",
+            "legendFormat": "{{operation}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops", "label": "Operations/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 15,
+        "title": "Trading Signals Distribution",
+        "type": "piechart",
+        "gridPos": {"x": 16, "y": 33, "w": 8, "h": 6},
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "market_system_simulation_signals_total",
+            "datasource": "Prometheus",
+            "legendFormat": "{{signal_type}}"
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "values": ["value", "percent"]
+          }
+        }
+      },
+      {
+        "id": 16,
+        "title": "Performance Metrics",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 39, "w": 24, "h": 4},
+        "targets": [
+          {
+            "refId": "Sharpe",
+            "query": "from(bucket: \"market-data\") |> range(start: -5m) |> filter(fn: (r) => r[\"_measurement\"] == \"performance\") |> filter(fn: (r) => r[\"_field\"] == \"sharpe_ratio\") |> last()",
+            "datasource": "InfluxDB"
+          },
+          {
+            "refId": "MaxDD",
+            "query": "from(bucket: \"market-data\") |> range(start: -5m) |> filter(fn: (r) => r[\"_measurement\"] == \"performance\") |> filter(fn: (r) => r[\"_field\"] == \"max_drawdown\") |> last()",
+            "datasource": "InfluxDB"
+          },
+          {
+            "refId": "Trades",
+            "query": "from(bucket: \"market-data\") |> range(start: -5m) |> filter(fn: (r) => r[\"_measurement\"] == \"performance\") |> filter(fn: (r) => r[\"_field\"] == \"total_trades\") |> last()",
+            "datasource": "InfluxDB"
+          }
+        ],
+        "options": {
+          "orientation": "horizontal",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "overrides": [
+            {"matcher": {"id": "byFrameRefID", "options": "MaxDD"}, "properties": [{"id": "unit", "value": "percentunit"}]}
+          ]
+        }
+      }
+    ]
+  }
+}

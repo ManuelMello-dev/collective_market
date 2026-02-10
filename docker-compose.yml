@@ -1,0 +1,207 @@
+version: '3.8'
+
+services:
+  # Redis - Episodic Memory (Short-term state)
+  redis:
+    image: redis:7-alpine
+    container_name: market-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - market-network
+    restart: unless-stopped
+
+  # MySQL - Long-term Memory (Event archival)
+  mysql:
+    image: mysql:8.0
+    container_name: market-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-market_root_pass}
+      MYSQL_DATABASE: ${MYSQL_DB:-market_memory}
+      MYSQL_USER: ${MYSQL_USER:-market}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-market_pass}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_PASSWORD:-market_root_pass}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - market-network
+    restart: unless-stopped
+
+  # InfluxDB - Time-Series Storage
+  influxdb:
+    image: influxdb:2.7
+    container_name: market-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD:-adminpassword}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-market-system}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-market-data}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:-my-super-secret-token}
+      DOCKER_INFLUXDB_INIT_RETENTION: 90d
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - market-network
+    restart: unless-stopped
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: market-prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - market-network
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+
+  # Grafana - Visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: market-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-piechart-panel
+      GF_SERVER_ROOT_URL: http://localhost:3000
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana_dashboard.json:/etc/grafana/provisioning/dashboards/market-dashboard.json:ro
+      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+    networks:
+      - market-network
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - influxdb
+
+  # Market Data Publisher (Your application)
+  # Uncomment after building Docker image
+  # market-publisher:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.publisher
+  #   container_name: market-publisher
+  #   ports:
+  #     - "5555:5555"  # ZMQ
+  #     - "9091:9090"  # Metrics
+  #   environment:
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     MYSQL_HOST: mysql
+  #     MYSQL_USER: ${MYSQL_USER:-market}
+  #     MYSQL_PASSWORD: ${MYSQL_PASSWORD:-market_pass}
+  #     MYSQL_DB: ${MYSQL_DB:-market_memory}
+  #     POLYGON_API_KEY: ${POLYGON_API_KEY}
+  #     ALPACA_KEY: ${ALPACA_KEY}
+  #     ALPACA_SECRET: ${ALPACA_SECRET}
+  #     INFLUXDB_URL: http://influxdb:8086
+  #     INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:-my-super-secret-token}
+  #     INFLUXDB_ORG: ${INFLUXDB_ORG:-market-system}
+  #     INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-market-data}
+  #   volumes:
+  #     - ./logs:/app/logs
+  #   networks:
+  #     - market-network
+  #   restart: unless-stopped
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #     mysql:
+  #       condition: service_healthy
+  #     influxdb:
+  #       condition: service_healthy
+
+  # Simulation Engine (Your application)
+  # Uncomment after building Docker image
+  # market-simulator:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.simulator
+  #   container_name: market-simulator
+  #   ports:
+  #     - "9092:9090"  # Metrics
+  #   environment:
+  #     ZMQ_PUBLISHER_HOST: market-publisher
+  #     ZMQ_PORT: 5555
+  #     INFLUXDB_URL: http://influxdb:8086
+  #     INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:-my-super-secret-token}
+  #     CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-}
+  #   volumes:
+  #     - ./simulation-data:/data
+  #   networks:
+  #     - market-network
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - market-publisher
+  #   # Uncomment for GPU support
+  #   # deploy:
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices:
+  #   #         - driver: nvidia
+  #   #           count: 1
+  #   #           capabilities: [gpu]
+
+volumes:
+  redis-data:
+    driver: local
+  mysql-data:
+    driver: local
+  influxdb-data:
+    driver: local
+  influxdb-config:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+networks:
+  market-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16

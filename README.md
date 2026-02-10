@@ -156,8 +156,238 @@ pytest tests/integration/ -v
 
 # Run with coverage
 pytest --cov=. --cov-report=html
-☸️ Production Deployment (Kubernetes)
-1. Prepare Cluster
+
+## 🚂 Production Deployment (Railway)
+
+Railway is a modern platform-as-a-service that simplifies deployment. The system can be deployed as two separate services:
+
+1. **Web Service**: FastAPI application for health checks and API endpoints
+2. **Worker Service**: Long-running market intelligence system
+
+### Prerequisites
+
+- Railway account (https://railway.app)
+- GitHub repository connected to Railway
+- Python version pinned to 3.11.x (Railway uses `.python-version` and `runtime.txt`)
+
+### Why Python 3.11?
+
+Python 3.13.x has compatibility issues with `numpy==1.24.3` during pip install, causing `BackendUnavailable: Cannot import 'setuptools.build_meta'` errors. Python 3.11.x is stable and fully compatible with all dependencies.
+
+### 1. Setup Managed Services
+
+Railway provides managed databases. Create these services in your Railway project:
+
+- **Redis**: For episodic memory (1-hour TTL cache)
+- **MySQL**: For long-term data archival
+- **InfluxDB** (optional): For time-series metrics (or use external service)
+
+### 2. Configure Environment Variables
+
+Set these environment variables in Railway for both services:
+
+#### Database Configuration
+```bash
+# Redis (from Railway Redis service)
+REDIS_URL=redis://default:password@redis.railway.internal:6379
+# Or individual components:
+REDIS_HOST=redis.railway.internal
+REDIS_PORT=6379
+
+# MySQL (from Railway MySQL service)
+MYSQL_HOST=mysql.railway.internal
+MYSQL_USER=root
+MYSQL_PASSWORD=your_mysql_password
+MYSQL_DATABASE=market_memory
+MYSQL_DB=market_memory
+
+# InfluxDB (external or Railway deployment)
+INFLUXDB_URL=http://influxdb.railway.internal:8086
+INFLUXDB_TOKEN=your_influxdb_token
+INFLUXDB_ORG=market-system
+INFLUXDB_BUCKET=market-data
+```
+
+#### API Keys
+```bash
+POLYGON_API_KEY=your_polygon_key
+ALPACA_KEY=your_alpaca_key
+ALPACA_SECRET=your_alpaca_secret
+```
+
+#### Service Configuration
+```bash
+# Metrics port (for worker service)
+METRICS_PORT=9090
+
+# ZMQ port (for internal messaging)
+ZMQ_PORT=5555
+```
+
+### 3. Deploy Web Service
+
+Create a new service in Railway:
+
+**Service Name**: `market-web`
+
+**Build Configuration**:
+- Builder: Nixpacks (automatic)
+- Python version: Detected from `.python-version` and `runtime.txt`
+
+**Start Command**:
+```bash
+uvicorn web:app --host 0.0.0.0 --port $PORT
+```
+
+**Health Check Path**: `/health`
+
+**Endpoints**:
+- `GET /health` - Health check for load balancers
+- `GET /status` - Detailed runtime status and configuration
+- `GET /metrics` - Prometheus metrics (if worker is running)
+- `GET /ready` - Readiness probe
+- `GET /live` - Liveness probe
+
+**Port**: Railway automatically sets `$PORT` environment variable
+
+### 4. Deploy Worker Service
+
+Create a second service in Railway:
+
+**Service Name**: `market-worker`
+
+**Build Configuration**:
+- Builder: Nixpacks (automatic)
+- Python version: Detected from `.python-version` and `runtime.txt`
+
+**Start Command**:
+```bash
+python integrated_system.py --symbols AAPL,MSFT,GOOGL,AMZN,NVDA --capital 100000 --interval 1.0
+```
+
+**Customize Parameters**:
+- `--symbols`: Comma-separated stock symbols to track
+- `--capital`: Initial capital for portfolio
+- `--interval`: Update interval in seconds
+- `--no-simulation`: Disable simulation engine
+- `--no-portfolio`: Disable portfolio tracking
+- `--no-metrics`: Disable Prometheus metrics
+- `--metrics-port`: Port for metrics server (default: 9090)
+
+**Example Alternative Commands**:
+```bash
+# Minimal worker (no metrics, no simulation)
+python integrated_system.py --symbols AAPL,MSFT --capital 50000 --no-simulation --no-metrics
+
+# Full featured worker
+python integrated_system.py --symbols AAPL,MSFT,GOOGL,AMZN,NVDA,TSLA,META --capital 250000 --interval 2.0 --metrics-port 9090
+```
+
+### 5. Service Communication
+
+The worker service exposes Prometheus metrics on port 9090 (configurable). To access these:
+
+1. **Option A**: Make worker metrics port public in Railway and configure Prometheus to scrape it
+2. **Option B**: Use Railway's internal networking to connect services
+3. **Option C**: Export metrics to InfluxDB and visualize in Grafana
+
+The web service `/metrics` endpoint can expose shared metrics if both services run in the same process, but typically:
+- **Web service** handles HTTP traffic
+- **Worker service** handles market data processing and exposes its own metrics
+
+### 6. Local vs Railway Differences
+
+| Aspect | Local Development | Railway Production |
+|--------|------------------|-------------------|
+| Infrastructure | `docker-compose up` | Managed services (Redis, MySQL) |
+| Configuration | `.env` file | Railway environment variables |
+| Networking | localhost | Internal Railway networking |
+| Python | Any version | 3.11.x (pinned) |
+| Deployment | Manual `python` commands | Automatic via git push |
+
+**Important**: `docker-compose.yml` is for local development only. Do not use it on Railway.
+
+### 7. Monitoring on Railway
+
+#### Logs
+View logs in Railway dashboard:
+- Web service: HTTP access logs, FastAPI output
+- Worker service: Market data processing, trading activity
+
+#### Metrics
+- Web service exposes basic health at `/health` and `/status`
+- Worker service can expose Prometheus metrics on dedicated port
+- Use Railway's built-in metrics for CPU, memory, network
+
+#### Alerts
+Configure Railway to:
+- Restart services on health check failures
+- Alert on high error rates
+- Scale based on resource usage
+
+### 8. Database Initialization
+
+Before running the worker, initialize the MySQL database:
+
+```sql
+-- Connect to MySQL (via Railway CLI or database client)
+CREATE DATABASE IF NOT EXISTS market_memory;
+
+-- Import schema
+USE market_memory;
+SOURCE init-db.sql;
+```
+
+Or use Railway's MySQL import feature to upload `init-db.sql`.
+
+### 9. Troubleshooting Railway Deployment
+
+#### Build Fails with numpy Error
+- **Cause**: Python 3.13.x incompatibility
+- **Solution**: Verify `.python-version` and `runtime.txt` both specify `3.11.8`
+
+#### Service Crashes on Startup
+- **Check**: Environment variables are set correctly
+- **Check**: Database services are running and accessible
+- **Check**: Start command is correct
+
+#### Cannot Connect to Database
+- **Solution**: Use Railway's internal URLs (e.g., `mysql.railway.internal`)
+- **Check**: Database service is in same project
+- **Check**: Environment variables match Railway's provided values
+
+#### Web Service Shows "502 Bad Gateway"
+- **Check**: Start command binds to `0.0.0.0:$PORT`
+- **Check**: Health check endpoint `/health` returns 200 OK
+- **Wait**: Service may still be starting (check logs)
+
+#### Worker Service Stops Unexpectedly
+- **Check**: Memory limits (increase if needed)
+- **Check**: Error logs for exceptions
+- **Ensure**: Signal handlers work (SIGTERM for graceful shutdown)
+
+### 10. Scaling Considerations
+
+- **Web Service**: Can scale horizontally (multiple instances)
+  - Stateless design allows load balancing
+  - Railway handles load balancing automatically
+
+- **Worker Service**: Typically runs as single instance
+  - Processes market data continuously
+  - For multiple workers, ensure coordination (separate symbols or time ranges)
+
+### 11. Cost Optimization
+
+- Use Railway's free tier for testing
+- For production:
+  - Right-size worker resources (monitor CPU/memory)
+  - Use managed Redis/MySQL from Railway
+  - Consider external InfluxDB if Railway InfluxDB is expensive
+  - Adjust `--interval` to reduce API calls and processing
+
+## ☸️ Production Deployment (Kubernetes)
+
+### 1. Prepare Cluster
 # Create namespace
 kubectl create namespace market-system
 
@@ -166,7 +396,7 @@ kubectl apply -f kubernetes_deployment.yaml
 
 # Verify
 kubectl get pods -n market-system
-2. Configure Auto-scaling
+### 2. Configure Auto-scaling
 The HPA is pre-configured to scale based on:
 CPU utilization (70% target)
 Memory utilization (80% target)
@@ -177,13 +407,13 @@ kubectl get hpa -n market-system
 
 # Manual scaling (if needed)
 kubectl scale deployment market-publisher -n market-system --replicas=5
-3. Persistent Storage
+### 3. Persistent Storage
 # Check PVCs
 kubectl get pvc -n market-system
 
 # Resize if needed (if storage class supports it)
 kubectl patch pvc redis-pvc -n market-system -p '{"spec":{"resources":{"requests":{"storage":"20Gi"}}}}'
-4. Configure Ingress (Optional)
+### 4. Configure Ingress (Optional)
 # ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -208,7 +438,7 @@ spec:
             name: grafana-service
             port:
               number: 3000
-5. Monitoring Setup
+### 5. Monitoring Setup
 # Install Prometheus Operator
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm install prometheus prometheus-community/kube-prometheus-stack \

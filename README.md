@@ -156,7 +156,8 @@ pytest tests/integration/ -v
 
 # Run with coverage
 pytest --cov=. --cov-report=html
-🚂 Production Deployment (Railway)
+
+## 🚂 Production Deployment (Railway)
 
 Railway is a modern platform-as-a-service that simplifies deployment. The system can be deployed as two separate services:
 
@@ -384,8 +385,9 @@ Or use Railway's MySQL import feature to upload `init-db.sql`.
   - Consider external InfluxDB if Railway InfluxDB is expensive
   - Adjust `--interval` to reduce API calls and processing
 
-☸️ Production Deployment (Kubernetes)
-1. Prepare Cluster
+## ☸️ Production Deployment (Kubernetes)
+
+### 1. Prepare Cluster
 # Create namespace
 kubectl create namespace market-system
 
@@ -394,7 +396,7 @@ kubectl apply -f kubernetes_deployment.yaml
 
 # Verify
 kubectl get pods -n market-system
-2. Configure Auto-scaling
+### 2. Configure Auto-scaling
 The HPA is pre-configured to scale based on:
 CPU utilization (70% target)
 Memory utilization (80% target)
@@ -405,13 +407,13 @@ kubectl get hpa -n market-system
 
 # Manual scaling (if needed)
 kubectl scale deployment market-publisher -n market-system --replicas=5
-3. Persistent Storage
+### 3. Persistent Storage
 # Check PVCs
 kubectl get pvc -n market-system
 
 # Resize if needed (if storage class supports it)
 kubectl patch pvc redis-pvc -n market-system -p '{"spec":{"resources":{"requests":{"storage":"20Gi"}}}}'
-4. Configure Ingress (Optional)
+### 4. Configure Ingress (Optional)
 # ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -436,7 +438,7 @@ spec:
             name: grafana-service
             port:
               number: 3000
-5. Monitoring Setup
+### 5. Monitoring Setup
 # Install Prometheus Operator
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm install prometheus prometheus-community/kube-prometheus-stack \

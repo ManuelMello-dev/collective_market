@@ -1,10 +1,11 @@
 # Build stage
 FROM node:22-alpine AS builder
 
-WORKDIR /app/dashboard
+WORKDIR /app
 
-# Copy package.json only first
+# Copy package.json and patches first (needed for pnpm install)
 COPY dashboard/package.json ./
+COPY dashboard/patches ./patches
 
 # Install pnpm globally
 RUN npm install -g pnpm
@@ -12,11 +13,8 @@ RUN npm install -g pnpm
 # Install dependencies (will generate pnpm-lock.yaml)
 RUN pnpm install
 
-# Copy patches
-COPY dashboard/patches ../patches
-
 # Copy source code
-COPY dashboard/ .
+COPY dashboard/ ./
 
 # Build application
 RUN pnpm build
@@ -36,8 +34,8 @@ COPY dashboard/package.json ./
 RUN pnpm install --prod
 
 # Copy built application from builder
-COPY --from=builder /app/dashboard/dist ./dist
-COPY --from=builder /app/dashboard/client/dist ./client/dist
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/client/dist ./client/dist
 
 # Expose port (Railway uses PORT env var)
 EXPOSE 3000

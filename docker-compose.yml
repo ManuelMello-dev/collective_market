@@ -154,6 +154,35 @@ services:
   #     influxdb:
   #       condition: service_healthy
 
+  # Dashboard - Web UI
+  market-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: market-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://market:${MYSQL_PASSWORD:-market_pass}@mysql:3306/${MYSQL_DB:-market_memory}
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:-my-super-secret-token}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-market-system}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-market-data}
+    networks:
+      - market-network
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+
   # Simulation Engine (Your application)
   # Uncomment after building Docker image
   # market-simulator:

@@ -1,14 +1,19 @@
 # Build stage
 FROM node:22-alpine AS builder
 
-WORKDIR /app
+WORKDIR /app/dashboard
 
-# Copy dashboard code
-COPY dashboard/package.json dashboard/pnpm-lock.yaml ./
-COPY dashboard/patches ./patches
+# Copy package.json only first
+COPY dashboard/package.json ./
 
-# Install dependencies
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Install dependencies (will generate pnpm-lock.yaml)
+RUN pnpm install
+
+# Copy patches
+COPY dashboard/patches ../patches
 
 # Copy source code
 COPY dashboard/ .
@@ -24,15 +29,15 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy package files
-COPY dashboard/package.json dashboard/pnpm-lock.yaml ./
+# Copy package.json
+COPY dashboard/package.json ./
 
 # Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod
+RUN pnpm install --prod
 
 # Copy built application from builder
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/client/dist ./client/dist
+COPY --from=builder /app/dashboard/dist ./dist
+COPY --from=builder /app/dashboard/client/dist ./client/dist
 
 # Expose port (Railway uses PORT env var)
 EXPOSE 3000

@@ -27,8 +27,9 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy package.json
+# Copy package.json and patches (needed for pnpm install with patches)
 COPY dashboard/package.json ./
+COPY dashboard/patches ./patches
 
 # Install production dependencies only
 RUN pnpm install --prod

@@ -1,6 +1,17 @@
 # Requirements for the project
 requests>=2.25.1
 flask>=1.1.2
-fear-and-greed>=0.4,<1  # May need to install from source
+fear-and-greed>=0.4,<1
 numpy>=1.19.5
 pandas>=1.1.5
+
+# Universal Cognitive Core dependencies
+yfinance>=0.2.32
+polygon-api-client>=1.14.0
+redis>=5.0.0
+mysql-connector-python>=8.2.0
+influxdb-client>=1.18.0
+pyzmq>=25.0.0
+
+# Async support
+aiohttp>=3.9.0

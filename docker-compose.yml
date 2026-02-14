@@ -117,6 +117,38 @@ services:
       - prometheus
       - influxdb
 
+  # Universal Cognitive Core - Market Wanderer
+  universal-mind:
+    build:
+      context: .
+      dockerfile: Dockerfile.universal-mind
+    container_name: universal-mind
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MYSQL_HOST: mysql
+      MYSQL_USER: ${MYSQL_USER:-market}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-market_pass}
+      MYSQL_DB: ${MYSQL_DB:-market_memory}
+      POLYGON_API_KEY: ${POLYGON_API_KEY}
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:-my-super-secret-token}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-market-system}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-market-data}
+      ZMQ_ENDPOINT: tcp://0.0.0.0:5555
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - market-network
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+
   # Market Data Publisher (Your application)
   # Uncomment after building Docker image
   # market-publisher:

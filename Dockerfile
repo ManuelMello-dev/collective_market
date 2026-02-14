@@ -3,9 +3,9 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copy package.json and patches first (needed for pnpm install)
-COPY dashboard/package.json dashboard/pnpm-lock.yaml* ./
-COPY dashboard/patches ./patches 2>/dev/null || true
+# Copy package.json (pnpm-lock.yaml is optional)
+COPY dashboard/package.json ./
+COPY dashboard/patches ./patches
 
 # Install pnpm globally
 RUN npm install -g pnpm

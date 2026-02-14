@@ -3,7 +3,7 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copy package.json
+# Copy package.json and patches
 COPY dashboard/package.json ./
 COPY dashboard/patches ./patches
 
@@ -27,8 +27,9 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy only package.json (no patches in production)
+# Copy package.json AND patches (needed for pnpm to validate dependencies)
 COPY dashboard/package.json ./
+COPY dashboard/patches ./patches
 
 # Install production dependencies only
 RUN pnpm install --prod --no-optional

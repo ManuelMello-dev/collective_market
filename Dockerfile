@@ -4,14 +4,14 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Copy package.json and patches first (needed for pnpm install)
-COPY dashboard/package.json ./
-COPY dashboard/patches ./patches
+COPY dashboard/package.json dashboard/pnpm-lock.yaml* ./
+COPY dashboard/patches ./patches 2>/dev/null || true
 
 # Install pnpm globally
 RUN npm install -g pnpm
 
-# Install dependencies (will generate pnpm-lock.yaml)
-RUN pnpm install
+# Install dependencies (will generate pnpm-lock.yaml if not present)
+RUN pnpm install || pnpm install --no-frozen-lockfile
 
 # Copy source code
 COPY dashboard/ ./
@@ -27,11 +27,12 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy package.json only (no patches needed in production)
-COPY dashboard/package.json ./
+# Copy package.json and create a production-only version without patches
+COPY dashboard/package.json ./package.json.orig
+RUN node -e "const pkg = require('./package.json.orig'); delete pkg.pnpm.patchedDependencies; require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2))"
 
-# Install production dependencies only (without patches)
-RUN pnpm install --prod --ignore-scripts
+# Install production dependencies only (patches removed from package.json)
+RUN pnpm install --prod --frozen-lockfile 2>/dev/null || pnpm install --prod
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist

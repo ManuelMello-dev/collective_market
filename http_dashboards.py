@@ -371,9 +371,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
     """HTTP request handler for dashboards"""
     
     metrics_callback = None
+    startup_logged = False
     
     def do_GET(self):
         """Handle GET requests"""
+        if not DashboardHandler.startup_logged:
+            logger.info("HTTP Dashboards Server is ONLINE")
+            DashboardHandler.startup_logged = True
+        
         parsed_path = urlparse(self.path)
         path = parsed_path.path
         

@@ -13,6 +13,4 @@ mysql-connector-python>=8.2.0
 influxdb-client>=1.18.0
 pyzmq>=25.0.0
 
-# Async support
-aiohttp>=3.9.0
-asyncio-contextmanager>=1.0.0
+# No external HTTP dependencies - using Python stdlib http.server

@@ -24,8 +24,8 @@ import mysql.connector
 from influxdb_client import InfluxDBClient
 from influxdb_client.client.write_api import SYNCHRONOUS
 
-# HTTP Server
-from http_server import start_http_server
+# HTTP Server (stdlib only - no external dependencies)
+from http_dashboards import start_http_dashboards
 
 # Configure logging
 logging.basicConfig(
@@ -521,8 +521,8 @@ async def main():
             "uptime_seconds": state.get("uptime_seconds", 0)
         }
     
-    http_runner = await start_http_server(port=HTTP_PORT, metrics_callback=get_metrics)
-    logger.info(f"HTTP Dashboards available at http://0.0.0.0:{HTTP_PORT}")
+    # Start HTTP dashboards in background thread (non-blocking)
+    http_server = start_http_dashboards(port=HTTP_PORT, metrics_callback=get_metrics)
 
     try:
         await wander_the_market(
@@ -536,7 +536,7 @@ async def main():
         logger.info("Keyboard interrupt received")
     finally:
         mind.shutdown()
-        await http_runner.cleanup()
+        http_server.shutdown()
 
     logger.info("\n" + "="*70)
     logger.info("FINAL MIND STATE AFTER WANDERING")

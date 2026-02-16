@@ -24,6 +24,9 @@ import mysql.connector
 from influxdb_client import InfluxDBClient
 from influxdb_client.client.write_api import SYNCHRONOUS
 
+# HTTP Server
+from http_server import start_http_server
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -503,8 +506,23 @@ async def wander_the_market(
 async def main():
     """Main entry point"""
     POLYGON_API_KEY = os.getenv("POLYGON_API_KEY", "YOUR_KEY")
+    HTTP_PORT = int(os.getenv("PORT", "8080"))
 
     mind = UniversalCognitiveCore("market_wanderer")
+    
+    def get_metrics():
+        state = mind.introspect()
+        return {
+            "concepts_formed": state.get("concepts_formed", 0),
+            "rules_learned": state.get("rules_learned", 0),
+            "transfers_made": state.get("transfers_made", 0),
+            "goals_generated": state.get("goals_generated", 0),
+            "total_observations": state.get("total_observations", 0),
+            "uptime_seconds": state.get("uptime_seconds", 0)
+        }
+    
+    http_runner = await start_http_server(port=HTTP_PORT, metrics_callback=get_metrics)
+    logger.info(f"HTTP Dashboards available at http://0.0.0.0:{HTTP_PORT}")
 
     try:
         await wander_the_market(
@@ -518,6 +536,7 @@ async def main():
         logger.info("Keyboard interrupt received")
     finally:
         mind.shutdown()
+        await http_runner.cleanup()
 
     logger.info("\n" + "="*70)
     logger.info("FINAL MIND STATE AFTER WANDERING")
